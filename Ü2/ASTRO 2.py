@@ -10,8 +10,8 @@ if repo_root not in sys.path:
 
 from help import unit_conv
 
-alpha_sat2025 = ('hour', 23, 45, 10.227)
-delta_sat2025 = ('arc', -3, 57, 29.36)
+alpha_sat2025 = ('hour', 23, 46, 55.89)
+delta_sat2025 = ('arc', -4, 3, 56.62)
 
 alpha_arc2000 = ('hour', 14, 15, 39.6721)
 delta_arc2000 = ('arc', 19, 10, 56.673)
@@ -24,10 +24,16 @@ l = unit_conv(('arc', 13, 17, 48.8)) # Östliche Länge
 
 
 obs_date = datetime.date(2025, 11, 12)
-obs_hour = 17.0 # Ortszeit which means time at location not in UT
+obs_hour = 17.0 # Ortszeit depending on interpetation of time can mean either ZT or LMT
 
-# converting locational time to UT
-obs_hour_UT = obs_hour - l/(np.pi) * 12.0
+TIME_INTERPRETATION = "LMT"
+if TIME_INTERPRETATION == "ZT":
+    # Zone time (legal time): UT = ZT - TZ
+    obs_hour_UT = obs_hour - 1
+elif TIME_INTERPRETATION == "LMT":
+    # Local Mean time: UT = LMT - longitude_hours (east positive)
+    obs_hour_UT = obs_hour - (l/np.pi)*12.0
+    
 
 # decimal day of year (1..365)
 day_of_year = obs_date.timetuple().tm_yday
@@ -152,17 +158,29 @@ objects = ["Saturn", "Arcturus"]
 tau_max_min = [('hour', 0, 0, 0), ('hour', 12, 0, 0)]
 
 
+print(f"Beobachtung bei ({unit_conv(('rad', b), 'arc', True)} NB, {unit_conv(('rad', l), 'arc', True)} OL) am {obs_date}")
+print(f"   Ortszeit : {int(obs_hour):02d}:{int((obs_hour - int(obs_hour))*60):02d}")
+print(f"   UT : {int(obs_hour_UT):02d}:{int((obs_hour_UT - int(obs_hour_UT))*60):02d}")
+print(f"  MEZ : {int(obs_hour_UT + 1):02d}:{int((obs_hour_UT + 1 - int(obs_hour_UT + 1))*60):02d}")
 
-print(f"Beobachtung bei ({unit_conv(('rad', b), 'arc', True)} NB, {unit_conv(('rad', l), 'arc', True)} OL) am {obs_date} um {int(obs_hour_UT):02d}:{int((obs_hour_UT - int(obs_hour_UT))*60):02d} UT")
 
 for i, (alpha, delta) in enumerate([[alpha_sat2025, delta_sat2025], [alpha_arc2000, delta_arc2000]]):
     print('-' * 40)
     print(f"Objekt: {objects[i]}")
 
     print(f"Rektaszension α: {unit_conv((alpha), 'hour', True)} Deklination δ: {unit_conv((delta), 'arc', True)}")
+    
+    alpha = unit_conv(alpha)
+    delta = unit_conv(delta)
+    
+    if objects[i] == "Saturn":
+        alpha_prec, delta_prec = alpha, delta
+    else:
+        dα, dδ = precession(alpha, delta, Time[i])
+        alpha_prec, delta_prec = alpha + dα, delta + dδ
 
-    alpha_prec = unit_conv(alpha) + precession(unit_conv(alpha), unit_conv(delta), Time[i])[0]
-    delta_prec = unit_conv(delta) + precession(unit_conv(alpha), unit_conv(delta), Time[i])[1]
+        print(f"Präzessionskorrigierte Rektaszension α_präz: {unit_conv(('rad', alpha_prec), 'hour', True)} Deklination δ_präz: {unit_conv(('rad', delta_prec), 'arc', True)}")
+ 
 
     tau = thetaFU - alpha_prec
 
@@ -180,10 +198,9 @@ for i, (alpha, delta) in enumerate([[alpha_sat2025, delta_sat2025], [alpha_arc20
         d += int(np.floor(total / 24.0))
         return (total % 24.0, int(d))
 
-    print(f"Präzessionskorrigierte Rektaszension α_präz: {unit_conv(('rad', alpha_prec), 'hour', True)} Deklination δ_präz: {unit_conv(('rad', delta_prec), 'arc', True)}")
     print('')
     print('Zeiten in Berlin (MEZ / UTC+1):')
-    print(f"Beobachtung bei t = {format_time((obs_hour_UT + 1, 0))}: Höhe h: {unit_conv(('rad', h_beob), 'arc', True)}, Azimuth A: {unit_conv(('rad', A_beob), 'arc', True)} ")
+    print(f"Beobachtung bei t = {format_time((obs_hour_UT + 1, 0))}: Höhe h: {unit_conv(('rad', h_beob), 'arc', True)}, Azimuth A: {unit_conv(('rad', A_beob), 'arc', True)}, Stundenwinkel τ: {unit_conv(('rad', tau), 'hour', True)}")
 
 
     print(f"Höhe_max : {format_time(add_hour(t_max))} bei Höhe {unit_conv(('rad', h_max), 'arc', True)}")
