@@ -64,3 +64,25 @@ def deg_to_hour(unit_deg:float):
     hour_min = (abs(unit_deg)/15 - hour)*60
     hour_sec = (hour_min - np.floor(hour_min))*60
     return (np.sign(unit_deg)*hour, np.floor(hour_min), hour_sec)
+
+
+
+
+def format_time(t_tuple:tuple):
+    """Format time returned by t_from_tau (hours, day_offset) into HH:MM string
+    with a day-offset annotation.
+    """
+    if t_tuple is None:
+        return "N/A"
+    hours, day = t_tuple
+    hh = int(hours) % 24
+    mm = int(round((hours - int(hours)) * 60))
+    # handle rounding to next hour
+    if mm == 60:
+        hh = (hh + 1) % 24
+        mm = 0
+    s = f"{hh:02d}:{mm:02d}"
+    if day == 0:
+        return f"{s}h"
+    sign = '+' if day > 0 else ''
+    return f"{s}h (day {sign}{day})"

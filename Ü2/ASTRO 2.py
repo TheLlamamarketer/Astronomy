@@ -1,31 +1,35 @@
 import numpy as np
 import sys
 import os
-import math
 import datetime
+
 script_dir = os.path.dirname(__file__)
 repo_root = os.path.abspath(os.path.join(script_dir, os.pardir))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
+from help import unit_conv, format_time
 
-from help import unit_conv
 
+# unit_conv converts all different unints to radians for easier calculations in sin and cos functions
+
+# Input of all the coordinates and observation timepoints
 alpha_sat2025 = ('hour', 23, 46, 55.89)
 delta_sat2025 = ('arc', -4, 3, 56.62)
 
 alpha_arc2000 = ('hour', 14, 15, 39.6721)
 delta_arc2000 = ('arc', 19, 10, 56.673)
 
-p = 2*np.pi/25772.5  # radian per year
-e = unit_conv(('deg', 23.43708)) # Ecliptic obliquity
+p = 2*np.pi/25772.5                 # radian per year
+e = unit_conv(('deg', 23.43708))    # Ecliptic obliquity
 
-b = unit_conv(('arc', 52, 27, 13.9)) # Nördliche Breite
-l = unit_conv(('arc', 13, 17, 48.8)) # Östliche Länge
+b = unit_conv(('arc', 52, 27, 13.9))    # Nördliche Breite
+l = unit_conv(('arc', 13, 17, 48.8))    # Östliche Länge
 
 
-obs_date = datetime.date(2025, 11, 12)
-obs_hour = 17.0 # Ortszeit depending on interpetation of time can mean either ZT or LMT
+obs_date = datetime.date(2025, 11, 12)  # Date of observation stored as a datetime.date object
+obs_hour = 17.0                         # Ortszeit depending on interpetation of time can mean either ZT or LMT
 
+# Extra Code if Ortszeit is Zone time (ZT so here its MEZ) or Local Mean Time (LMT) 
 TIME_INTERPRETATION = "LMT"
 if TIME_INTERPRETATION == "ZT":
     # Zone time (legal time): UT = ZT - TZ
@@ -33,25 +37,16 @@ if TIME_INTERPRETATION == "ZT":
 elif TIME_INTERPRETATION == "LMT":
     # Local Mean time: UT = LMT - longitude_hours (east positive)
     obs_hour_UT = obs_hour - (l/np.pi)*12.0
-    
 
-# decimal day of year (1..365)
-day_of_year = obs_date.timetuple().tm_yday
 
-# decimal observation year
-obs_decimal_year = obs_date.year + (day_of_year - 1 + obs_hour_UT/24.0) / 365.2422
-epoch_saturn = 2025.9
+day_of_year = obs_date.timetuple().tm_yday          # gets the exact day of the year (out of 365) on the observation day
+
+obs_decimal_year = obs_date.year + (day_of_year - 1 + obs_hour_UT/24.0) / 365.2422 # calculates the year in decimal of the current observation time. The -1 because 1 Jan is supposed to be day 0.
 epoch_arcturus = 2000.0
-
-# precession years to apply:
-years_saturn = obs_decimal_year - epoch_saturn
-years_arcturus = obs_decimal_year - epoch_arcturus
-
-# Example: set Time list used in your code
-Time = [years_saturn, years_arcturus]
+years_arcturus = obs_decimal_year - epoch_arcturus                                 # finds years in decimal since 2000 Jan 1st.
 
 
-#PRÄZESSION
+# Precession definition
 def precession(alpha, delta, years):
     d_alpha = years * p * (np.cos(e) + np.sin(e) * np.sin(alpha) * np.tan(delta))
     d_delta = years * p * np.cos(alpha) * np.sin(e)
@@ -59,17 +54,17 @@ def precession(alpha, delta, years):
     return d_alpha, d_delta
 
 
-#ORTSZEITEN
 
-
+# Local mean time definitions
 thetaG0 = unit_conv(('hour', 3, 25, 30.8376)) # Greenwich Sidereal Time at 12.11.2025 at 0h UT
 
-thetaG = thetaG0 + obs_hour_UT * np.pi/12 * 366.2422/365.2422 # Calculate Θ_G(t) Greenwich Sidereal Time at observation time 17h local time
-thetaFU = thetaG + l
+thetaG = thetaG0 + obs_hour_UT * np.pi/12 * 366.2422/365.2422 # Calculate Θ_G(t) Greenwich Sidereal Time at observation time 17h
+thetaFU = thetaG + l   
+
+print(unit_conv(('rad', thetaFU), 'hour', True))
 
 
-
-#HÖHE UND AZIMUTH
+# calculation of local angles from equatorial coordinates
 def local_angles(delta, tau):
 
     h = np.arcsin(
@@ -81,87 +76,51 @@ def local_angles(delta, tau):
         -np.sin(b) * np.cos(delta) * np.cos(tau) + np.cos(b) * np.sin(delta)
     )
 
-    return h, np.mod(A_z, 2*np.pi) # Wrap azimuth to [0, 2π)
+    return h, np.mod(A_z, 2*np.pi) # Wrap azimuth to [0, 2π) from the previous range of (-π, π)
 
-#KULMINATIONEN
+
 
 def h_and_t(alpha, delta, tau):
+    # calculates time and height with a given hour angle tau
     h_beob = local_angles(delta, tau)[0]
     t_beob = t_from_tau(tau, alpha)
     return h_beob, t_beob
 
-def t_from_tau(tau_rad, alpha_rad):
-    """Convert an hour angle `tau` (radians) and right ascension `alpha` (radians)
-    into local solar time in hours and an integer day offset.
-
-    Returns: (t_hours_wrapped, day_offset)
-    - t_hours_wrapped is in [0, 24)
-    - day_offset is integer number of days relative to reference 0h UT
-    """
-     
+def t_from_tau(tau_rad, alpha_rad):  
     tau_rad = tau_rad % (2 * np.pi)
     alpha_rad = alpha_rad % (2 * np.pi)
     
-    # t_hours = (tau + alpha - thetaG0 - l) * (24/(2π)) * (1/sidereal_per_solar)
-    t_hours = (tau_rad + alpha_rad - thetaG0 - l) * (24.0 / (2 * np.pi)) * (365.2422/ 366.2422)
+    t_hours = (tau_rad + alpha_rad - thetaG0 - l) * (12.0 / ( np.pi)) * (365.2422/ 366.2422)
 
     day_offset = np.floor(t_hours / 24.0)
     t_wrapped = t_hours - day_offset * 24.0
     return t_wrapped, int(day_offset)
 
-#AUF- UND UNTERGANG h=0 
+
 
 def up_and_down(delta, alpha):
+    # rise and set times (where h=0)
+    
     x = -np.tan(b) * np.tan(delta)
     # Handle circumpolar / never-rise cases
     if abs(x) > 1.0:
         # x > 1 -> arccos undefined -> never rises; x < -1 -> always above horizon
         return None, None
 
-    tau_rise = -np.arccos(np.clip(x, -1.0, 1.0))
-    tau_set  = +np.arccos(np.clip(x, -1.0, 1.0))
+    tau_rise = -np.arccos(x)
+    tau_set  = +np.arccos(x)
 
+    return t_from_tau(tau_rise, alpha),  t_from_tau(tau_set, alpha)
 
-    t_up = t_from_tau(tau_rise, alpha)
-    t_down = t_from_tau(tau_set, alpha)
-
-    # Return rise, set in chronological order. Compare absolute hours.
-    abs_up = t_up[0] + 24 * t_up[1]
-    abs_down = t_down[0] + 24 * t_down[1]
-    if abs_up <= abs_down:
-        return t_up, t_down
-    else:
-        return t_up, t_down
-
-
-def format_time(t_tuple:tuple):
-    """Format time returned by t_from_tau (hours, day_offset) into HH:MM string
-    with a day-offset annotation.
-    """
-    if t_tuple is None:
-        return "N/A"
-    hours, day = t_tuple
-    hh = int(hours) % 24
-    mm = int(round((hours - int(hours)) * 60))
-    # handle rounding to next hour
-    if mm == 60:
-        hh = (hh + 1) % 24
-        mm = 0
-    s = f"{hh:02d}:{mm:02d}"
-    if day == 0:
-        return f"{s}h (same day)"
-    sign = '+' if day > 0 else ''
-    return f"{s}h (day {sign}{day})"
 
 objects = ["Saturn", "Arcturus"]
-
 tau_max_min = [('hour', 0, 0, 0), ('hour', 12, 0, 0)]
 
 
 print(f"Beobachtung bei ({unit_conv(('rad', b), 'arc', True)} NB, {unit_conv(('rad', l), 'arc', True)} OL) am {obs_date}")
-print(f"   Ortszeit : {int(obs_hour):02d}:{int((obs_hour - int(obs_hour))*60):02d}")
-print(f"   UT : {int(obs_hour_UT):02d}:{int((obs_hour_UT - int(obs_hour_UT))*60):02d}")
-print(f"  MEZ : {int(obs_hour_UT + 1):02d}:{int((obs_hour_UT + 1 - int(obs_hour_UT + 1))*60):02d}")
+print(f"   Ortszeit : {format_time((obs_hour, 0))} {TIME_INTERPRETATION}")
+print(f"   UT : {format_time((obs_hour_UT, 0))}")
+print(f"  MEZ : {format_time((obs_hour_UT + 1, 0))}")
 
 
 for i, (alpha, delta) in enumerate([[alpha_sat2025, delta_sat2025], [alpha_arc2000, delta_arc2000]]):
@@ -176,7 +135,7 @@ for i, (alpha, delta) in enumerate([[alpha_sat2025, delta_sat2025], [alpha_arc20
     if objects[i] == "Saturn":
         alpha_prec, delta_prec = alpha, delta
     else:
-        dα, dδ = precession(alpha, delta, Time[i])
+        dα, dδ = precession(alpha, delta, years_arcturus)
         alpha_prec, delta_prec = alpha + dα, delta + dδ
 
         print(f"Präzessionskorrigierte Rektaszension α_präz: {unit_conv(('rad', alpha_prec), 'hour', True)} Deklination δ_präz: {unit_conv(('rad', delta_prec), 'arc', True)}")
@@ -190,6 +149,7 @@ for i, (alpha, delta) in enumerate([[alpha_sat2025, delta_sat2025], [alpha_arc20
     h_max, t_max = h_and_t(alpha_prec, delta_prec, unit_conv(tau_max_min[0]))
     h_min, t_min = h_and_t(alpha_prec, delta_prec, unit_conv(tau_max_min[1]))
     
+    # convert times to MEZ by adding one hour
     def add_hour(t):
         if t is None:
             return None
@@ -201,10 +161,38 @@ for i, (alpha, delta) in enumerate([[alpha_sat2025, delta_sat2025], [alpha_arc20
     print('')
     print('Zeiten in Berlin (MEZ / UTC+1):')
     print(f"Beobachtung bei t = {format_time((obs_hour_UT + 1, 0))}: Höhe h: {unit_conv(('rad', h_beob), 'arc', True)}, Azimuth A: {unit_conv(('rad', A_beob), 'arc', True)}, Stundenwinkel τ: {unit_conv(('rad', tau), 'hour', True)}")
+    print('')
 
 
-    print(f"Höhe_max : {format_time(add_hour(t_max))} bei Höhe {unit_conv(('rad', h_max), 'arc', True)}")
-    print(f"Untergang: {format_time(add_hour(t_down))}") if t_down is not None else print("Untergang N/A")
-    print(f"Höhe_min : {format_time(add_hour(t_min))} bei Höhe {unit_conv(('rad', h_min), 'arc', True)}")
-    print(f"Aufgang  : {format_time(add_hour(t_up))}") if t_up is not None else print("Aufgang N/A")
+    # Order all events chronologically (first event prints first)
+    def abs_hours_mez(t):
+        if t is None:
+            return None
+        h, d = add_hour(t) 
+        return h + 24 * d
+    
+    
+    # order the dates of the events to print them in chronological order
+    # is an optional addition
+    events = []
+    if t_up is not None:
+        events.append((abs_hours_mez(t_up), f"  Aufgang: {format_time(add_hour(t_up))}"))
+    else:
+        events.append((None, "Aufgang N/A"))
+
+    events.append((abs_hours_mez(t_max), f" Höhe_max: {format_time(add_hour(t_max))} bei Höhe {unit_conv(('rad', h_max), 'arc', True)}"))
+
+    if t_down is not None:
+        events.append((abs_hours_mez(t_down), f"Untergang: {format_time(add_hour(t_down))}"))
+    else:
+        events.append((None, "Untergang N/A"))
+
+    events.append((abs_hours_mez(t_min), f" Höhe_min: {format_time(add_hour(t_min))} bei Höhe {unit_conv(('rad', h_min), 'arc', True)}"))
+
+    # Print in chronological order; keep N/A at the end
+    for _, line in sorted([e for e in events if e[0] is not None], key=lambda x: x[0]):
+        print(line)
+    for _, line in [e for e in events if e[0] is None]:
+        print(line)
+
 
