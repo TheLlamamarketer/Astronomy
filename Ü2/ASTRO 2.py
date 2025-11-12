@@ -74,9 +74,9 @@ def local_angles(delta, tau):
     A_z = np.arctan2(
         -np.cos(delta) * np.sin(tau),
         -np.sin(b) * np.cos(delta) * np.cos(tau) + np.cos(b) * np.sin(delta)
-    )
+    ) # calculates azimuth A starting at North towards East, so that 0 is North, π/2 is East, π is South, 3π/2 is West
 
-    return h, np.mod(A_z, 2*np.pi) # Wrap azimuth to [0, 2π) from the previous range of (-π, π)
+    return h, np.mod(A_z, 2*np.pi) # Wraps azimuth to [0, 2π) from the previous range of (-π, π)
 
 
 
@@ -140,7 +140,6 @@ for i, (alpha, delta) in enumerate([[alpha_sat2025, delta_sat2025], [alpha_arc20
 
         print(f"Präzessionskorrigierte Rektaszension α_präz: {unit_conv(('rad', alpha_prec), 'hour', True)} Deklination δ_präz: {unit_conv(('rad', delta_prec), 'arc', True)}")
  
-
     tau = thetaFU - alpha_prec
 
     h_beob, A_beob = local_angles(delta_prec, tau)
@@ -163,14 +162,12 @@ for i, (alpha, delta) in enumerate([[alpha_sat2025, delta_sat2025], [alpha_arc20
     print(f"Beobachtung bei t = {format_time((obs_hour_UT + 1, 0))}: Höhe h: {unit_conv(('rad', h_beob), 'arc', True)}, Azimuth A: {unit_conv(('rad', A_beob), 'arc', True)}, Stundenwinkel τ: {unit_conv(('rad', tau), 'hour', True)}")
     print('')
 
-
     # Order all events chronologically (first event prints first)
     def abs_hours_mez(t):
         if t is None:
             return None
         h, d = add_hour(t) 
         return h + 24 * d
-    
     
     # order the dates of the events to print them in chronological order
     # is an optional addition
